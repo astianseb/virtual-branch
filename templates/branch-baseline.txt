@@ -1,0 +1,17 @@
+edit conf running
+gen
+ hostname {{BRANCH_HOSTNAME}}
+rtg
+ router ospf
+ network 192.168.0.0/16 area 0
+ passive-interface ens3
+ exit
+loopback0
+ ipaddress {{BRANCH_LOOPBACK_IP}}
+ exit
+sec
+ ipsec enable
+ psk "strongkey"
+addrunning
+exit
+exit

@@ -1,0 +1,7 @@
+edit conf running
+sec
+ vpn branch-to-hq ikev2-psk-strong {{BRANCH_WAN_IP}} {{HQ_WAN_IP}}
+ ipsec-rule branch-lan-to-hq-lan {{BRANCH_LAN_NET}} {{HQ_LAN_NET}} any esp tunnel branch-to-hq
+addrunning
+exit
+exit

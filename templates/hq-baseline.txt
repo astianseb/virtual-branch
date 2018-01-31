@@ -1,0 +1,17 @@
+edit conf running
+gen
+ hostname 6wind-hq
+rtg
+ router ospf
+ network 192.168.0.0/16 area 0
+ passive-interface ens3
+ exit
+loopback0
+ ipaddress 10.0.0.1/32
+ exit
+sec
+ ipsec enable
+ psk "strongkey"
+addrunning
+exit
+exit

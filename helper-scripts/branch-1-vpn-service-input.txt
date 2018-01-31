@@ -1,0 +1,5 @@
+branch_hostname: "branch-1"
+hq_deployment_name: "hq"
+hq_blueprint_name: "hq-baseline"
+branch_deployment_name: "branch-1"
+branch_blueprint_name: "branch-baseline"

@@ -1,0 +1,272 @@
+tosca_definitions_version: cloudify_dsl_1_3
+
+imports:
+  - http://www.getcloudify.org/spec/cloudify/4.2/types.yaml
+  - https://github.com/cloudify-cosmo/cloudify-openstack-plugin/releases/download/2.5.1/plugin.yaml
+  - https://github.com/cloudify-incubator/cloudify-utilities-plugin/releases/download/1.4.5/plugin.yaml
+
+inputs:
+
+  fortigate_image_url:
+    default: "https://s3-eu-west-1.amazonaws.com/cloudify-labs/images/FG562-DZ.img"
+
+  user:
+    description: >
+      The username of the agent running on the instance created from the image.
+    default: admin
+  password:
+    default: ""
+
+  image:
+    description: >
+      Fortigate image UUID
+    default: "20244243-2fa5-4cd1-9dbe-0ff13e480913"
+
+  flavor:
+    description: >
+      An Openstack Flavor ID.
+    default: { get_secret: small_image_flavor }
+
+  branch-lan-net:
+    description: >
+      Branch lan network name.
+    default: "branch-1-lan"
+
+  branch_deployment_name:
+    description: >
+      Branch deployment name
+    default: "branch-1"
+
+  branch_blueprint_name:
+    description: >
+      Branch blueprint name
+    default: "branch-baseline"
+
+
+dsl_definitions:
+
+  openstack_config: &openstack_config
+    username: { get_secret: keystone_username }
+    password: { get_secret: keystone_password }
+    tenant_name: { get_secret: keystone_tenant_name }
+    auth_url: { get_secret: keystone_url }
+    region: { get_secret: region }
+
+node_templates:
+
+  branch_vnf_deployment:
+    type: cloudify.nodes.DeploymentProxy
+    properties:
+      resource_config:
+        blueprint:
+          id: { get_input: branch_blueprint_name }
+          external_resource: true
+        deployment:
+          id: { get_input: branch_deployment_name }
+          external_resource: true
+          outputs:
+            baseline_branch_mgmt_ip: branch_mgmt_ip
+            baseline_branch_wan_ip: branch_wan_ip
+            baseline_branch_lan_net: branch_lan_net
+            baseline_branch_username: branch_username
+            baseline_branch_password: branch_password
+
+
+  branch_fw_baseline_config:
+    type: cloudify.terminal.raw
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            terminal_auth: &terminal_auth
+              user: admin
+              password: ''
+              ip: { get_attribute: [branch_fw_vnf, networks, mgmt, 0] }
+              promt_check:
+                - '#'
+                - '$'
+              errors:
+                - "Command fail."
+            calls:
+              - action: exit
+        start:
+          inputs:
+            terminal_auth: *terminal_auth
+            calls:
+              - template: templates/branch-fw-baseline.txt
+                params:
+                  BRANCH_LAN_NET: { get_attribute: [branch_vnf_deployment, deployment, outputs, branch_lan_net ] }
+                  OSPF_RID: { get_attribute: [branch_fw_vnf, networks, mgmt, 0 ] }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: branch_fw_vnf
+      - type: cloudify.relationships.depends_on
+        target: mgmt_port
+
+
+  branch_fw_vnf:
+    type: cloudify.openstack.nodes.Server
+    properties:
+      openstack_config: *openstack_config
+      agent_config:
+        install_method: none
+      server:
+        key_name: ''
+        image: { get_input: image }
+        flavor: { get_input: flavor }
+    relationships:
+    - type: cloudify.openstack.server_connected_to_port
+      target: mgmt_port
+    - type: cloudify.openstack.server_connected_to_port
+      target: public_network_port
+    - type: cloudify.openstack.server_connected_to_port
+      target: private_network_port
+
+  mgmt_port:
+    type: cloudify.openstack.nodes.Port
+    properties:
+      openstack_config: *openstack_config
+    relationships:
+    - type: cloudify.relationships.contained_in
+      target: mgmt_network
+    - type: cloudify.relationships.depends_on
+      target: mgmt_subnet
+    - type: cloudify.openstack.port_connected_to_security_group
+      target: security_group
+    - type: cloudify.openstack.port_connected_to_floating_ip
+      target: ip
+
+  public_network_port:
+    type: cloudify.openstack.nodes.Port
+    properties:
+      openstack_config: *openstack_config
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            args:
+              allowed_address_pairs: [{"ip_address": "0.0.0.0/0"}]
+    relationships:
+    - type: cloudify.relationships.contained_in
+      target: public_network
+    - type: cloudify.relationships.depends_on
+      target: public_network_subnet
+    - type: cloudify.openstack.port_connected_to_security_group
+      target: security_group
+
+  private_network_port:
+    type: cloudify.openstack.nodes.Port
+    properties:
+      openstack_config: *openstack_config
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            args:
+              allowed_address_pairs: [{"ip_address": "0.0.0.0/0"}]
+    relationships:
+    - type: cloudify.relationships.contained_in
+      target: private_network
+    - type: cloudify.relationships.depends_on
+      target: private_network_subnet
+    - type: cloudify.openstack.port_connected_to_security_group
+      target: security_group
+
+  mgmt_subnet:
+    type: cloudify.openstack.nodes.Subnet
+    properties:
+      openstack_config: *openstack_config
+      use_external_resource: true
+      resource_id: mgmt-subnet
+    relationships:
+    - target: mgmt_network
+      type: cloudify.relationships.contained_in
+
+  mgmt_network:
+    type: cloudify.openstack.nodes.Network
+    properties:
+      openstack_config: *openstack_config
+      use_external_resource: true
+      resource_id: mgmt
+
+  public_network_subnet:
+    type: cloudify.openstack.nodes.Subnet
+    properties:
+      openstack_config: *openstack_config
+      use_external_resource: true
+      resource_id: { get_input: branch-lan-net }
+    relationships:
+    - target: public_network
+      type: cloudify.relationships.contained_in
+
+  public_network:
+    type: cloudify.openstack.nodes.Network
+    properties:
+      openstack_config: *openstack_config
+      use_external_resource: true
+      resource_id: { get_input: branch-lan-net }
+
+  private_network_subnet:
+    type: cloudify.openstack.nodes.Subnet
+    properties:
+      openstack_config: *openstack_config
+      use_external_resource: false
+      resource_id: { concat: [ { get_input: branch-lan-net }, '-protected'] }
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            args:
+              gateway_ip: null
+              cidr: "172.16.1.0/24"
+              ip_version: 4
+      cloudify.interfaces.validation:
+        creation:
+          inputs:
+            args:
+              gateway_ip: null
+              cidr: "172.16.1.0/24"
+              ip_version: 4
+    relationships:
+    - target: private_network
+      type: cloudify.relationships.contained_in
+
+
+  private_network:
+    type: cloudify.openstack.nodes.Network
+    properties:
+      openstack_config: *openstack_config
+      use_external_resource: false
+      resource_id: { concat: [ { get_input: branch-lan-net }, '-protected'] }
+
+  security_group:
+    type: cloudify.openstack.nodes.SecurityGroup
+    properties:
+      openstack_config: *openstack_config
+      security_group:
+        description: generic security group
+      rules:
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: "TCP"
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: "UDP"
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: "ICMP"
+          port_range_min: null
+          port_range_max: null
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: 89
+
+
+  ip:
+    type: cloudify.openstack.nodes.FloatingIP
+    properties:
+      openstack_config: *openstack_config
+      floatingip:
+        floating_network_name: { get_secret: external_network_name }
+
+
+outputs:
+
+  branch_fw_vnf_mgmt_ip:
+    value: { get_attribute: [branch_fw_vnf, networks, mgmt, 0] }

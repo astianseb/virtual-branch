@@ -1,0 +1,32 @@
+
+node_types:
+
+  ###########################################################
+  # We define a type that inherits openstack's default
+  # server, and adds monitoring capabillities on top of it.
+  ###########################################################
+
+  nodecellar.nodes.NotMonitoredServer:
+    derived_from: cloudify.openstack.nodes.Server
+    properties:
+      agent_config:
+        default:
+          user: { get_input: agent_user }
+          install_method: init_script
+          port: 22
+          key: { get_secret: agent_key_private }
+      server:
+        default:
+          key_name: ''
+          image: { get_input: image }
+          flavor: { get_input: flavor }
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: openstack.nova_plugin.server.create
+          inputs:
+            args:
+              default:
+                image: { get_input: image }
+                flavor: { get_input: flavor }
+                userdata: { get_attribute: [ cloudify_host_cloud_config, cloud_config ] }

@@ -1,0 +1,297 @@
+tosca_definitions_version: cloudify_dsl_1_3
+
+imports:
+    - http://www.getcloudify.org/spec/cloudify/4.2/types.yaml
+    - https://github.com/cloudify-cosmo/cloudify-openstack-plugin/releases/download/2.5.1/plugin.yaml
+    - https://github.com/cloudify-incubator/cloudify-utilities-plugin/releases/download/1.4.5/plugin.yaml
+
+
+
+inputs:
+
+  flavor:
+    description: >
+      An Openstack Flavor ID.
+    default: { get_secret: large_image_flavor }
+
+  image:
+    description: >
+      6WIND image name
+    default: "6wind-turbo-ipsec-ee-x86_64-1.5.3-day0"
+
+  user:
+    description: >
+      Username for 6WIND router
+    default: "admin"
+
+  password:
+    description: >
+      Password for 6WIND router
+    default: "admin"
+
+  branch_hostname:
+    description: >
+      Branch hostname
+    default: "branch-1"
+
+  branch_loopback_ip:
+    description: >
+      Branch loopback0 IP address
+    default: "10.0.0.101/32"
+
+  branch_lan_address:
+    description: >
+      IP address of LAN network
+    default: "192.168.101.1/24"
+
+  branch_lan_net:
+    description: >
+      Network address of LAN network
+    default: "192.168.101.0/24"
+
+  branch_lan_name:
+    description: >
+      Beranch LAN network name
+    default: ""
+
+
+dsl_definitions:
+
+  openstack_config: &openstack_config
+    username: { get_secret: keystone_username }
+    password: { get_secret: keystone_password }
+    tenant_name: { get_secret: keystone_tenant_name }
+    auth_url: { get_secret: keystone_url }
+    region: { get_secret: region }
+
+
+
+
+node_templates:
+
+
+
+  branch_vnf_baseline:
+    type: cloudify.terminal.raw
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            terminal_auth: &terminal_auth
+              user: {get_input: user}
+              password: {get_input: password}
+              ip: { get_attribute: [branch_vnf, networks, mgmt, 0] }
+              exit_command: "logout"
+              promt_check:
+                - "}"
+              errors:
+                - "String error"
+            calls:
+              - action: "logout"
+        start:
+          inputs:
+            terminal_auth: *terminal_auth
+            calls:
+              - template: templates/branch-baseline.txt
+                params:
+                  BRANCH_HOSTNAME: { get_input: branch_hostname}
+                  BRANCH_LOOPBACK_IP: { get_input: branch_loopback_ip }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: branch_vnf
+      - type: cloudify.relationships.depends_on
+        target: mgmt_port
+
+
+  branch_vnf:
+    type: cloudify.openstack.nodes.Server
+    properties:
+      openstack_config: *openstack_config
+      agent_config:
+        install_method: none
+      server:
+        key_name: ''
+        image: { get_input: image }
+        flavor: { get_input: flavor }
+    relationships:
+    - type: cloudify.openstack.server_connected_to_port
+      target: mgmt_port
+    - type: cloudify.openstack.server_connected_to_port
+      target: wan_network_port
+    - type: cloudify.openstack.server_connected_to_port
+      target: lan_network_port
+    - type: cloudify.relationships.depends_on
+      target: 6wind_image
+
+  mgmt_port:
+    type: cloudify.openstack.nodes.Port
+    properties:
+      openstack_config: *openstack_config
+    relationships:
+    - type: cloudify.relationships.contained_in
+      target: mgmt_network
+    - type: cloudify.relationships.depends_on
+      target: mgmt_subnet
+    - type: cloudify.openstack.port_connected_to_security_group
+      target: security_group
+    - type: cloudify.openstack.port_connected_to_floating_ip
+      target: ip
+
+  lan_network_port:
+    type: cloudify.openstack.nodes.Port
+    properties:
+      openstack_config: *openstack_config
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            args:
+              allowed_address_pairs: [{"ip_address": "0.0.0.0/0"}]
+    relationships:
+    - type: cloudify.relationships.contained_in
+      target: lan_network
+    - type: cloudify.relationships.depends_on
+      target: lan_network_subnet
+    - type: cloudify.openstack.port_connected_to_security_group
+      target: security_group
+
+  wan_network_port:
+    type: cloudify.openstack.nodes.Port
+    properties:
+      openstack_config: *openstack_config
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            args:
+              allowed_address_pairs: [{"ip_address": "0.0.0.0/0"}]
+    relationships:
+    - type: cloudify.relationships.contained_in
+      target: wan_network
+    - type: cloudify.relationships.depends_on
+      target: wan_network_subnet
+    - type: cloudify.openstack.port_connected_to_security_group
+      target: security_group
+
+
+
+  6wind_image:
+    type: cloudify.openstack.nodes.Image
+    properties:
+      image:
+        container_format: "bare"
+        disk_format: "qcow2"
+      openstack_config: *openstack_config
+      use_external_resource: true
+      resource_id: { get_input: image}
+
+  mgmt_subnet:
+    type: cloudify.openstack.nodes.Subnet
+    properties:
+      openstack_config: *openstack_config
+      use_external_resource: true
+      resource_id: mgmt-subnet
+    relationships:
+    - target: mgmt_network
+      type: cloudify.relationships.contained_in
+
+  mgmt_network:
+    type: cloudify.openstack.nodes.Network
+    properties:
+      openstack_config: *openstack_config
+      use_external_resource: true
+      resource_id: mgmt
+
+  lan_network_subnet:
+    type: cloudify.openstack.nodes.Subnet
+    properties:
+      openstack_config: *openstack_config
+      use_external_resource: false
+      resource_id: { get_input: branch_lan_name }
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            args:
+              gateway_ip: null
+              cidr: { get_input: branch_lan_address }
+              ip_version: 4
+      cloudify.interfaces.validation:
+        creation:
+          inputs:
+            args:
+              gateway_ip: null
+              cidr: { get_input: branch_lan_address }
+              ip_version: 4
+    relationships:
+    - target: lan_network
+      type: cloudify.relationships.contained_in
+
+
+  lan_network:
+    type: cloudify.openstack.nodes.Network
+    properties:
+      openstack_config: *openstack_config
+      use_external_resource: false
+      resource_id: { get_input: branch_lan_name }
+
+  wan_network_subnet:
+    type: cloudify.openstack.nodes.Subnet
+    properties:
+      openstack_config: *openstack_config
+      use_external_resource: true
+      resource_id: wan_net_subnet
+    relationships:
+    - target: wan_network
+      type: cloudify.relationships.contained_in
+
+  wan_network:
+    type: cloudify.openstack.nodes.Network
+    properties:
+      openstack_config: *openstack_config
+      use_external_resource: true
+      resource_id: wan_net
+
+  security_group:
+    type: cloudify.openstack.nodes.SecurityGroup
+    properties:
+      openstack_config: *openstack_config
+      security_group:
+        description: generic security group
+      rules:
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: "TCP"
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: "UDP"
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: "ICMP"
+          port_range_min: null
+          port_range_max: null
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: 50
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: 89
+
+  ip:
+    type: cloudify.openstack.nodes.FloatingIP
+    properties:
+      openstack_config: *openstack_config
+      floatingip:
+        floating_network_name: { get_secret: external_network_name }
+
+
+
+outputs:
+
+  baseline_branch_mgmt_ip:
+    value: { get_attribute: [branch_vnf, networks, mgmt, 0] }
+  baseline_branch_lan_net:
+    value: { get_input: branch_lan_net }
+  baseline_branch_lan_name:
+    value: { get_input: branch_lan_name}
+  baseline_branch_wan_ip:
+    value: { get_attribute: [branch_vnf, networks, wan_net] }
+  baseline_branch_username:
+    value: { get_input: user }
+  baseline_branch_password:
+    value: { get_input: password }

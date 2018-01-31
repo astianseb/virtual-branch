@@ -1,0 +1,32 @@
+config system global
+    set hostname "fortigate-vnf"
+end
+config system interface
+    edit "port2"
+        set mode dhcp
+        set alias "public"
+        set defaultgw disable
+    next
+    edit "port3"
+        set mode dhcp
+        set alias "private"
+        set defaultgw disable
+    next
+end
+config router ospf
+    set router-id {{OSPF_RID}}
+    config area
+        edit 0.0.0.0
+        next
+    end
+    config ospf-interface
+        edit "---to-router---"
+            set interface "port2"
+        next
+    end
+    config network
+        edit 1
+            set prefix {{BRANCH_LAN_NET}}
+        next
+    end
+end

@@ -1,0 +1,7 @@
+edit conf running
+sec
+ delete vpn branch-to-hq
+ delete ipsec-rule branch-lan-to-hq-lan
+addrunning
+exit
+exit

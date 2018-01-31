@@ -1,0 +1,7 @@
+edit conf running
+sec
+ vpn {{BRANCH_HOSTNAME}} ikev2-psk-strong {{HQ_WAN_IP}} {{BRANCH_WAN_IP}}
+ ipsec-rule lan-hq-to-{{BRANCH_HOSTNAME}}  {{HQ_LAN_NET}} {{BRANCH_LAN_NET}} any esp tunnel {{BRANCH_HOSTNAME}}
+addrunning
+exit
+exit
