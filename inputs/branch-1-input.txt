@@ -1,0 +1,16 @@
+#---baseline-------
+branch_hostname: "branch-1"
+branch_loopback_ip: "10.0.0.101/32"
+branch_lan_address: "192.168.101.1/24"
+branch_lan_net: "192.168.101.0/24"
+branch_lan_name: "branch-1-lan"
+#---firewall-------
+#branch-lan-net: "branch-1-lan"
+#branch_deployment_name: "branch-1"
+#---portforward----
+#portforward_port: "55555"
+#portforward_ip: "192.168.20.73"
+#---vpn-----
+#branch_hostname: "branch-1"
+#hq_deployment_name: "hq"
+#hq_blueprint_name: "hq-baseline"

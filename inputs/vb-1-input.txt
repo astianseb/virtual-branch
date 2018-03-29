@@ -1,0 +1,14 @@
+branch_rtr_deployment_name: "branch-1-rtr"
+branch_rtr_blueprint_name: "branch-rtr-baseline"
+
+branch_rtr_hostname: "branch-1"
+branch_rtr_loopback_ip: "10.0.0.101/32"
+branch_rtr_lan_name: "branch-1-lan"
+branch_rtr_lan_address: "192.168.101.1/24"
+branch_rtr_lan_net: "192.168.101.0/24"
+#-----------------------------------------------------
+branch_fw_deployment_name: "branch-1-fw"
+branch_fw_blueprint_name: "branch-fw-baseline"
+#-----------------------------------------------------
+branch_webapp_deployment_name: "branch-1-webapp"
+branch_webapp_blueprint_name: "branch-webapplication"

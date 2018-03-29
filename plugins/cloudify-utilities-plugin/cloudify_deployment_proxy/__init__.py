@@ -21,7 +21,6 @@ import time
 
 from .constants import (
     UNINSTALL_ARGS,
-    DEPLOYMENTS_TIMEOUT,
     EXECUTIONS_TIMEOUT,
     POLLING_INTERVAL,
     EXTERNAL_RESOURCE,
@@ -30,6 +29,7 @@ from .constants import (
     DEP_CREATE,
     DEP_DELETE,
     EXEC_START,
+    EXEC_LIST,
     NIP,
     NIP_TYPE,
     DEP_TYPE
@@ -104,10 +104,11 @@ class DeploymentProxyBase(object):
         # Polling-related properties
         self.interval = operation_inputs.get('interval', POLLING_INTERVAL)
         self.state = operation_inputs.get('state', 'terminated')
-        self.timeout = \
-            operation_inputs.get(
-                'timeout',
-                EXECUTIONS_TIMEOUT if 'execute_start' else DEPLOYMENTS_TIMEOUT)
+        self.timeout = operation_inputs.get('timeout', EXECUTIONS_TIMEOUT)
+
+        # This ``execution_id`` will be set once execute workflow done
+        # successfully
+        self.execution_id = None
 
     def dp_get_client_response(self,
                                _client,
@@ -178,6 +179,37 @@ class DeploymentProxyBase(object):
             ctx.logger.info("Create deployment {0}."
                             .format(self.deployment_id))
             self.dp_get_client_response('deployments', DEP_CREATE, client_args)
+
+        # In order to set the ``self.execution_id`` need to get the
+        # ``execution_id`` of current deployment ``self.deployment_id``
+
+        # Prepare executions list fields
+        exec_list_fields = \
+            ['status', 'workflow_id', 'created_at', 'id', 'deployment_id']
+
+        # Call list executions for the current deployment
+        _execs = self.dp_get_client_response(
+            'executions', EXEC_LIST,
+            {
+                'deployment_id': self.deployment_id,
+                '_include': exec_list_fields
+            }
+        )
+
+        # Retrieve the ``execution_id`` associated with the current deployment
+        for _exec in _execs:
+            if _exec.get('workflow_id') == 'create_deployment_environment':
+                self.execution_id = _exec.get('id')
+                ctx.logger.info("Found execution_id {0} for deployment_id {1}"
+                                .format(_exec.get('id'), self.deployment_id))
+                break
+
+        # If the ``execution_id`` cannot be found raise error
+        if not self.execution_id:
+            raise NonRecoverableError(
+                'No execution id Found for deployment'
+                ' {0}'.format(self.deployment_id)
+            )
 
         return self.verify_execution_successful()
 
@@ -274,15 +306,24 @@ class DeploymentProxyBase(object):
                 dict(deployment_id=self.deployment_id,
                      workflow_id=self.workflow_id,
                      **execution_args)
-            self.dp_get_client_response('executions', EXEC_START, client_args)
+            response = self.dp_get_client_response('executions',
+                                                   EXEC_START, client_args)
+
+            # Set the execution_id for the last execution process created
+            self.execution_id = response['id']
+            ctx.logger.debug('Executions start response: {0}'.format(response))
 
             # Poll for execution success.
             if not self.verify_execution_successful():
                 ctx.logger.error('Deployment error.')
 
+            ctx.logger.debug('Polling execution succeeded')
+
         if NIP_TYPE == ctx.node.type:
+            ctx.logger.debug('Start post execute node proxy')
             return self.post_execute_node_instance_proxy()
         elif DEP_TYPE == ctx.node.type:
+            ctx.logger.debug('Start post execute deployment proxy')
             return self.post_execute_deployment_proxy()
         return False
 
@@ -308,23 +349,34 @@ class DeploymentProxyBase(object):
         return True
 
     def post_execute_deployment_proxy(self):
+        runtime_prop = ctx.instance.runtime_properties['deployment']
+        ctx.logger.debug(
+            'Runtime  deployment properties {0}'.format(runtime_prop))
 
         if 'outputs' \
                 not in ctx.instance.runtime_properties['deployment'].keys():
             update_attributes('deployment', 'outputs', dict())
+            ctx.logger.debug('No deployment proxy outputs exist.')
 
         try:
+            ctx.logger.debug('Deployment Id is {0}'.format(self.deployment_id))
+
             response = self.client.deployments.outputs.get(self.deployment_id)
+
+            ctx.logger.debug(
+                'Deployment outputs response {0}'.format(response))
+
         except CloudifyClientError as ex:
             ctx.logger.error(
                 'Failed to query deployment outputs: {0}'.format(str(ex)))
         else:
             dep_outputs = response.get('outputs')
             ctx.logger.debug('Deployment outputs: {0}'.format(dep_outputs))
-            for key, val in self.deployment_outputs.items():
+            for key, val in dep_outputs.items():
                 ctx.instance.runtime_properties[
-                    'deployment']['outputs'][val] = \
+                    'deployment']['outputs'][key] = \
                     dep_outputs.get(key, '')
+
         return True
 
     def verify_execution_successful(self):
@@ -335,4 +387,5 @@ class DeploymentProxyBase(object):
             self.deployment_id,
             self.workflow_state,
             self.workflow_id,
+            self.execution_id,
             _log_redirect=self.deployment_logs.get('redirect', True))

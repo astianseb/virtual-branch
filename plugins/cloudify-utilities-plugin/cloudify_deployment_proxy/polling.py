@@ -64,8 +64,12 @@ def poll_with_timeout(pollster,
                       expected_result=True):
 
     pollster_args = pollster_args or dict()
-
+    # Check if timeout value is -1 that allows infinite timeout
+    # If timeout value is not -1 then it is a finite timeout
+    timeout = float('infinity') if timeout == -1 else timeout
     current_time = time.time()
+
+    ctx.logger.debug('Timeout value is {}'.format(timeout))
 
     while time.time() <= current_time + timeout:
         if pollster(**pollster_args) != expected_result:
@@ -95,7 +99,8 @@ def dep_logs_redirect(_client, execution_id):
         events, full_count = _client.events.get(execution_id, last_event,
                                                 250, True)
         for event in events:
-
+            ctx.logger.debug(
+                'Event {0} for execution_id {1}'.format(event, execution_id))
             instance_prompt = event.get('node_instance_id', "")
             if instance_prompt:
                 if event.get('operation'):
@@ -111,6 +116,12 @@ def dep_logs_redirect(_client, execution_id):
                 instance_prompt if instance_prompt else "",
                 event.get('message', "")
             )
+            message = message.encode('utf-8')
+
+            ctx.logger.debug(
+                'Message {0} for Event {1} for execution_id {1}'.format(
+                    message, event))
+
             level = event.get('level')
             predefined_levels = {
                 'critical': 50,
@@ -125,6 +136,14 @@ def dep_logs_redirect(_client, execution_id):
                 ctx.logger.log(20, message)
 
         last_event += len(events)
+        # returned infinite count
+        if full_count < 0:
+            full_count = last_event + 100
+        # returned nothing, let's do it next time
+        if len(events) == 0:
+            ctx.logger.log(20, "Returned nothing, let's get logs next time.")
+            break
+
     ctx.instance.runtime_properties[COUNT_EVENTS][execution_id] = last_event
 
 
@@ -153,26 +172,31 @@ def dep_workflow_in_state_pollster(_client,
                                    _dep_id,
                                    _state,
                                    _workflow_id=None,
-                                   _log_redirect=False):
+                                   _log_redirect=False,
+                                   _execution_id=None):
 
-    exec_list_fields = \
+    exec_get_fields = \
         ['status', 'workflow_id', 'created_at', 'id']
 
     try:
-        _execs = \
-            _client.executions.list(deployment_id=_dep_id,
-                                    _include=exec_list_fields)
+        _exec = \
+            _client.executions.get(execution_id=_execution_id,
+                                   _include=exec_get_fields)
+
+        ctx.logger.debug(
+            'The exec get response form {0} is {1}'.format(_dep_id, _exec))
+
     except CloudifyClientError as ex:
         raise NonRecoverableError(
-            'Executions list failed {0}.'.format(str(ex)))
-    else:
-        for _exec in _execs:
-            if _workflow_id and _exec.get('workflow_id', '') != _workflow_id:
-                continue
-            if _log_redirect:
-                dep_logs_redirect(_client, _exec.get('id'))
-            if _exec.get('status') == _state:
-                return True
+            'Executions get failed {0}.'.format(str(ex)))
+
+    if _exec.get('status') == _state:
+        ctx.logger.debug(
+            'The status for _exec info id'
+            ' {0} is {1}'.format(_execution_id, _state))
+
+        return True
+
     return False
 
 
@@ -182,6 +206,7 @@ def poll_workflow_after_execute(_timeout,
                                 _dep_id,
                                 _state,
                                 _workflow_id,
+                                _execution_id,
                                 _log_redirect=False):
 
     pollster_args = {
@@ -189,7 +214,8 @@ def poll_workflow_after_execute(_timeout,
         '_dep_id': _dep_id,
         '_state': _state,
         '_workflow_id': _workflow_id,
-        '_log_redirect': _log_redirect
+        '_log_redirect': _log_redirect,
+        '_execution_id': _execution_id,
     }
 
     ctx.logger.debug('Polling: {0}'.format(pollster_args))

@@ -61,7 +61,7 @@ node_templates:
               errors:
                 - "Command fail."
             calls:
-              - action: exit
+              - action: "exit"
         start:
           inputs:
             terminal_auth: *terminal_auth

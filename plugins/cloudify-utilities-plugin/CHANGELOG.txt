@@ -60,3 +60,21 @@ releases:
 
   v1.4.2.1:
   - Handle parameters correctly in configuration update operation.
+
+  v1.4.3:
+  - Allow infinite timeout in deployment proxy.
+
+  v1.4.4:
+  - Add Debug Logging to Deployment Proxy.
+
+  v.1.4.5:
+  - Terminal Plugin Handle Socket Timeout.
+
+  v.1.5.0:
+  - Add REST Plugin for generic interaction with REST APIs.
+
+  v1.5.0.1:
+  - Deployment proxy bug fix. Ensure that correct execution ID is polled for deployment, when workflow ID is identical.
+
+  v.1.5.1:
+  - Support user configuration of failure success on certain responses in REST plugin.

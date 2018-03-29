@@ -3,7 +3,7 @@ tosca_definitions_version: cloudify_dsl_1_3
 imports:
   - http://www.getcloudify.org/spec/cloudify/4.2/types.yaml
   - https://github.com/cloudify-cosmo/cloudify-openstack-plugin/releases/download/2.5.1/plugin.yaml
-  - https://github.com/cloudify-incubator/cloudify-utilities-plugin/releases/download/1.4.5/plugin.yaml
+  - https://github.com/cloudify-incubator/cloudify-utilities-plugin/releases/download/1.5.0/plugin.yaml
 
 inputs:
 
@@ -20,27 +20,27 @@ inputs:
   image:
     description: >
       Fortigate image UUID
-    default: "20244243-2fa5-4cd1-9dbe-0ff13e480913"
+    default: "3e5f623f-e988-4441-985d-d8d9b875771f"
 
   flavor:
     description: >
       An Openstack Flavor ID.
     default: { get_secret: small_image_flavor }
 
-  branch-lan-net:
+  branch-lan-name:
     description: >
       Branch lan network name.
     default: "branch-1-lan"
 
-  branch_deployment_name:
+  branch_rtr_deployment_name:
     description: >
       Branch deployment name
-    default: "branch-1"
+    default: "branch-1-rtr"
 
-  branch_blueprint_name:
+  branch_rtr_blueprint_name:
     description: >
       Branch blueprint name
-    default: "branch-baseline"
+    default: "branch-rtr-baseline"
 
 
 dsl_definitions:
@@ -59,10 +59,10 @@ node_templates:
     properties:
       resource_config:
         blueprint:
-          id: { get_input: branch_blueprint_name }
+          id: { get_input: branch_rtr_blueprint_name }
           external_resource: true
         deployment:
-          id: { get_input: branch_deployment_name }
+          id: { get_input: branch_rtr_deployment_name }
           external_resource: true
           outputs:
             baseline_branch_mgmt_ip: branch_mgmt_ip
@@ -79,16 +79,15 @@ node_templates:
         create:
           inputs:
             terminal_auth: &terminal_auth
-              user: admin
-              password: ''
+              user: "admin"
+              password: ""
               ip: { get_attribute: [branch_fw_vnf, networks, mgmt, 0] }
               promt_check:
                 - '#'
-                - '$'
               errors:
                 - "Command fail."
             calls:
-              - action: exit
+              - action: "exit"
         start:
           inputs:
             terminal_auth: *terminal_auth
@@ -194,7 +193,7 @@ node_templates:
     properties:
       openstack_config: *openstack_config
       use_external_resource: true
-      resource_id: { get_input: branch-lan-net }
+      resource_id: { get_input: branch-lan-name }
     relationships:
     - target: public_network
       type: cloudify.relationships.contained_in
@@ -204,14 +203,14 @@ node_templates:
     properties:
       openstack_config: *openstack_config
       use_external_resource: true
-      resource_id: { get_input: branch-lan-net }
+      resource_id: { get_input: branch-lan-name }
 
   private_network_subnet:
     type: cloudify.openstack.nodes.Subnet
     properties:
       openstack_config: *openstack_config
       use_external_resource: false
-      resource_id: { concat: [ { get_input: branch-lan-net }, '-protected'] }
+      resource_id: { concat: [ { get_input: branch-lan-name }, '-protected'] }
     interfaces:
       cloudify.interfaces.lifecycle:
         create:
@@ -237,7 +236,7 @@ node_templates:
     properties:
       openstack_config: *openstack_config
       use_external_resource: false
-      resource_id: { concat: [ { get_input: branch-lan-net }, '-protected'] }
+      resource_id: { concat: [ { get_input: branch-lan-name }, '-protected'] }
 
   security_group:
     type: cloudify.openstack.nodes.SecurityGroup

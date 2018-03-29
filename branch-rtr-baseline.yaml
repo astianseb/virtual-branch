@@ -1,10 +1,9 @@
 tosca_definitions_version: cloudify_dsl_1_3
 
 imports:
-    - http://www.getcloudify.org/spec/cloudify/4.2/types.yaml
-    - https://github.com/cloudify-cosmo/cloudify-openstack-plugin/releases/download/2.5.1/plugin.yaml
-    - https://github.com/cloudify-incubator/cloudify-utilities-plugin/releases/download/1.4.5/plugin.yaml
-
+  - http://www.getcloudify.org/spec/cloudify/4.2/types.yaml
+  - https://github.com/cloudify-cosmo/cloudify-openstack-plugin/releases/download/2.5.1/plugin.yaml
+  - https://github.com/cloudify-incubator/cloudify-utilities-plugin/releases/download/1.5.0/plugin.yaml
 
 
 inputs:
@@ -52,7 +51,7 @@ inputs:
   branch_lan_name:
     description: >
       Beranch LAN network name
-    default: ""
+    default: "branch-1-lan"
 
 
 dsl_definitions:

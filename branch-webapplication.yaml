@@ -30,15 +30,15 @@ inputs:
     description: The user name of the agent on the instance created from the image.
     default: ubuntu
 
-  branch_deployment_name:
+  branch_rtr_deployment_name:
     description: >
       Branch deployment name
-    default: "branch-1"
+    default: "branch-1-rtr"
 
-  branch_blueprint_name:
+  branch_rtr_blueprint_name:
     description: >
       Branch blueprint name
-    default: "branch-baseline"
+    default: "branch-rtr-baseline"
 
 
 dsl_definitions:
@@ -58,10 +58,10 @@ node_templates:
     properties:
       resource_config:
         blueprint:
-          id: { get_input: branch_blueprint_name }
+          id: { get_input: branch_rtr_blueprint_name }
           external_resource: true
         deployment:
-          id: { get_input: branch_deployment_name }
+          id: { get_input: branch_rtr_deployment_name }
           external_resource: true
           outputs:
             baseline_branch_lan_name: branch_lan_name

@@ -11,10 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from jinja2 import Template
+
 from cloudify import ctx
 from cloudify import exceptions as cfy_exc
 from cloudify.decorators import operation
-from jinja2 import Template
+
 
 import terminal_connection
 
@@ -54,8 +56,7 @@ def run(**kwargs):
     # additional settings
     global_promt_check = terminal_auth.get('promt_check')
     global_error_examples = terminal_auth.get('errors')
-    exit_command = terminal_auth.get('exit_command')
-    ctx.logger.info("---> exit_command: %s" % str(exit_command))
+    exit_command = terminal_auth.get('exit_command', 'exit')
     # save logs to debug file
     log_file_name = None
     if terminal_auth.get('store_logs'):
@@ -75,16 +76,12 @@ def run(**kwargs):
                                         log_file_name=log_file_name)
             ctx.logger.info("Will be used: " + ip)
             break
-        except Exception as ex:
-            ctx.logger.info("Can't connect to %s with %s" % (
-                repr(ip), str(ex)
-            ))
-            raise cfy_exc.RecoverableError()
 
+        except Exception as ex:
+            ctx.logger.info("Can't connect to:{} with exception:{} and type:{}"
+                            .format(repr(ip), str(ex), str(type(ex))))
     else:
-        raise cfy_exc.NonRecoverableError(
-            "please check your ip list"
-        )
+        raise cfy_exc.OperationRetry(message="Let's try one more time?")
 
     ctx.logger.info("Device prompt: " + prompt)
 
@@ -129,7 +126,7 @@ def run(**kwargs):
         if responses:
             ctx.logger.info("We have predefined responses: " + str(responses))
 
-        ctx.logger.info("Template: \n" + str(operation))
+        ctx.logger.debug("Template: \n" + str(operation))
 
         result = ""
         for op_line in operation.split("\n"):
@@ -137,7 +134,8 @@ def run(**kwargs):
             if not op_line.strip():
                 continue
 
-            ctx.logger.info("Execute: " + op_line)
+            ctx.logger.info("Executing template...")
+            ctx.logger.debug("Execute: " + op_line)
             result_part = connection.run(op_line, promt_check,
                                          error_examples, responses)
 
@@ -153,12 +151,7 @@ def run(**kwargs):
 
     while not connection.is_closed() and exit_command:
         ctx.logger.info("Execute close")
-        ctx.logger.info("---> exit_command: %s" % str(exit_command))
-        ctx.logger.info("---> promt_check: %s" % str(promt_check))
-        ctx.logger.info("---> error_examples: %s" % str(error_examples))
-
         result = connection.run(exit_command, promt_check, error_examples)
-
         ctx.logger.info("Result of close: " + result)
 
     connection.close()

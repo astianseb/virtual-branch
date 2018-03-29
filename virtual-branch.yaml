@@ -1,0 +1,119 @@
+tosca_definitions_version: cloudify_dsl_1_3
+
+imports:
+  - http://www.getcloudify.org/spec/cloudify/4.2/types.yaml
+  - https://github.com/cloudify-cosmo/cloudify-openstack-plugin/releases/download/2.5.1/plugin.yaml
+#  - https://github.com/cloudify-incubator/cloudify-utilities-plugin/releases/download/1.5.1/plugin.yaml
+  - plugins/cloudify-utilities-plugin/plugin.yaml
+
+
+inputs:
+
+  branch_rtr_deployment_name:
+    description: >
+      Branch deployment name
+    default: "branch-1-rtr"
+
+  branch_rtr_blueprint_name:
+    description: >
+      Branch blueprint name
+    default: "branch-rtr-baseline"
+
+  branch_rtr_hostname:
+    default: "branch-1"
+
+  branch_rtr_loopback_ip:
+    default: "10.0.0.101/32"
+
+  branch_rtr_lan_address:
+    default: "192.168.101.1/24"
+
+  branch_rtr_lan_net:
+    default: "192.168.101.0/24"
+
+  branch_rtr_lan_name:
+    default: "branch-1-lan"
+
+#-------------------------------------
+
+  branch_fw_deployment_name:
+    description: >
+      Branch router deployment name
+    default: "branch-1-fw"
+
+  branch_fw_blueprint_name:
+    description: >
+      Branch router blueprint name
+    default: "branch-fw-baseline"
+
+#-------------------------------------
+
+  branch_webapp_deployment_name:
+    description: >
+      Branch router deployment name
+    default: "branch-1-webapp"
+
+  branch_webapp_blueprint_name:
+    description: >
+      Branch router blueprint name
+    default: "branch-webapplication"
+
+
+node_templates:
+
+  branch_rtr:
+    type: cloudify.nodes.DeploymentProxy
+    properties:
+      resource_config:
+        blueprint:
+          id: { get_input: branch_rtr_blueprint_name }
+          external_resource: true
+        deployment:
+          id: { get_input: branch_rtr_deployment_name }
+          external_resource: false
+          inputs:
+            branch_hostname: { get_input: branch_rtr_hostname }
+            branch_loopback_ip: { get_input: branch_rtr_loopback_ip }
+            branch_lan_address: { get_input: branch_rtr_lan_address }
+            branch_lan_net: { get_input: branch_rtr_lan_net }
+            branch_lan_name: { get_input: branch_rtr_lan_name }
+
+  branch_fw:
+    type: cloudify.nodes.DeploymentProxy
+    properties:
+      resource_config:
+        blueprint:
+          id: { get_input: branch_fw_blueprint_name }
+          external_resource: true
+        deployment:
+          id: { get_input: branch_fw_deployment_name }
+          external_resource: false
+          inputs:
+            branch-lan-name: { get_input: branch_rtr_lan_name }
+            branch_rtr_deployment_name: { get_input: branch_rtr_deployment_name }
+            branch_rtr_blueprint_name: { get_input: branch_rtr_blueprint_name }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: branch_rtr
+
+  branch_webapp:
+    type: cloudify.nodes.DeploymentProxy
+    properties:
+      resource_config:
+        blueprint:
+          id: { get_input: branch_webapp_blueprint_name }
+          external_resource: true
+        deployment:
+          id: { get_input: branch_webapp_deployment_name }
+          external_resource: false
+          inputs:
+            branch_rtr_deployment_name: { get_input: branch_rtr_deployment_name }
+            branch_rtr_blueprint_name: { get_input: branch_rtr_blueprint_name }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: branch_fw
+
+
+
+
+outputs:
